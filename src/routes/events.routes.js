@@ -14,10 +14,12 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage:storage
 })
+router.get('/getActiveEvents', eventsController.getActiveEvents);
+router.get('/getDraftEvents',verifyToken, eventsController.getDraftEvents);
+router.get('/getEventVersionsForApproval',verifyToken, eventsController.getEventVersionsForApproval);
 
 router.post('/newEvent', verifyToken ,eventsController.newEvent);
 router.put('/updateEventVersion', verifyToken ,eventsController.updateEventVersion);
-router.get('/getActiveEvents', eventsController.getActiveEvents);
 router.post('/uploadEventImage', verifyToken,upload.single('profile'), eventsController.uploadEventImage);
 router.delete('/deleteEventImage', verifyToken, eventsController.deleteEventImage);
 router.put('/eventVersionApproval', verifyToken ,eventsController.eventVersionApproval);

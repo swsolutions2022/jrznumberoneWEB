@@ -2,7 +2,101 @@ const db = require('../models');
 const { Op } = require("sequelize");
 const moment = require('moment');
 const { SITE_HOST }  = require('../config');
-const fs = require('fs').promises;
+const fs = require('fs');
+
+
+const getDraftEvents = async (req, res) => {
+    try {        
+        let events = await db.eventversions.findAll({
+        where: { 
+            isActive: 0,
+            sendForApproval: 0
+        },
+        include: [{
+            model: db.eventversionfiles,
+            as: 'files',
+            required:false, 
+            attributes: ['filename'],
+        }],
+       });
+       if (events !== undefined && events.length > 0) 
+       {
+            for await (const event of events) {
+                for await (const file of event.files) {
+                    file.filename = `${SITE_HOST}/events/${file.filename}`;
+                }
+            }
+       }
+       res.status(200).json(events);
+    } catch (error) {
+        console.log(error)
+        res.status(500).json([]);
+    }
+}
+const getActiveEvents = async (req, res) => {
+    try {        
+        let events = await db.eventversions.findAll({
+        where: { 
+            isActive: 1,
+            sendForApproval: 1,
+            startDate:{
+                [Op.lte]: moment().format('YYYY-MM-DD')
+            },
+            endDate:{
+                [Op.gte]: moment().format('YYYY-MM-DD')
+            },
+        },
+        include: [{
+            model: db.eventversionfiles,
+            as: 'files',
+            required:false, 
+            attributes: ['filename'],
+        }],
+       });
+       if (events !== undefined && events.length > 0) 
+       {
+            for await (const event of events) {
+                for await (const file of event.files) {
+                    file.filename = `${SITE_HOST}/events/${file.filename}`;
+                }
+            }
+       }
+       res.status(200).json(events);
+    } catch (error) {
+        console.log(error)
+        res.status(500).json([]);
+    }
+}
+const getEventVersionsForApproval = async (req, res) => {
+    try {        
+        let events = await db.eventversions.findAll({
+        where: { 
+            isActive: 0,
+            sendForApproval: 1
+        },
+        include: [{
+            model: db.eventversionfiles,
+            as: 'files',
+            required:false, 
+            attributes: ['filename'],
+        }],
+       });
+       if (events !== undefined && events.length > 0) 
+       {
+            for await (const event of events) {
+                for await (const file of event.files) {
+                    file.filename = `${SITE_HOST}/events/${file.filename}`;
+                }
+            }
+       }
+       res.status(200).json(events);
+    } catch (error) {
+        console.log(error)
+        res.status(500).json([]);
+    }
+}
+
+
 
 
 const uploadEventImage = async (req, res) =>{
@@ -36,6 +130,8 @@ const deleteEventImage = async (req, res) =>{
 }
 
 
+
+
 const newEvent = async (req, res) => {
     
     let transaction = await db.sequelize.transaction();
@@ -61,7 +157,7 @@ const newEvent = async (req, res) => {
                 linkInstagram:  req.body.linkInstagram,
                 linkFacebook:  req.body.linkFacebook,
                 linkTiktok:  req.body.linkTiktok,
-                sendForApproval: req.body.sendForApproval
+                sendForApproval: false
             }
             let insertedVersionEvent = await db.eventversions.create(newVersionEvent, { transaction });  
             let savedLog = await db.logs.create({ userId: req.userId, created : 1, referenceId: insertedVersionEvent.eventVersionId, model: "events" }, { transaction });
@@ -115,101 +211,115 @@ const updateEventVersion = async (req, res) => {
         res.status(500).json({ status:500,  message : error, id: 0 });
     }
 }
+const deleteEventVersion = async (req,res) => {
+    let transaction = await db.sequelize.transaction();
+    try {
+        let eventversion = await db.eventversions.findOne({
+            where: { 
+                isActive: 0,
+                eventVersionId: req.query.eventVersionId
+            },
+            include: [{
+                model: db.eventversionfiles,
+                as: 'files',
+                required:false, 
+                attributes: ['filename', 'destination','eventVersionFileId'],
+            }],
+           });
+        
+        if(eventversion != null)
+        {
+            try {
+                let filesToDelete = [];
+                eventversion.files.forEach(function(file){ 
+                     fs.stat(`${file.destination}/${file.filename}`,function(err, stats) {
+                        console.log(stats);//here we got all information of file in stats variable
+                        if (err) {
+                            return console.error(err);
+                        }
+                     
+                        fs.unlink(`${file.destination}/${file.filename}`,function(err){
+                             if(err) return console.log(err);
+                             filesToDelete.push(file.eventVersionFileId);  
+                             console.log(file.eventVersionFileId)
+                        });  
+                     }); 
+                });
 
-const deleteEventVersion = async (req,res) =>{
-    let eventversion = await db.eventversions.findOne({
-        where: { 
-            isActive: 0,
-            eventVersionId: req.query.eventVersionId
-        },
-        include: [{
-            model: db.eventversionfiles,
-            as: 'files',
-            required:false, 
-            attributes: ['filename', 'destination'],
-        }],
-       });
-    if(eventversion != null)
-    {
-        for await (const file of eventversion.files) {
-            if (fs.exists(`${file.destination}/${file.filename}`)) {
-                console.log('file exists');
-            } 
-            else
-            {
-                console.log('file no exists');
-            }
+                // for(const file of eventversion.files) {
+                //     fs.stat(`${file.destination}/${file.filename}`, function (err, stats) {
+                //         console.log(stats);//here we got all information of file in stats variable
+                //         if (err) {
+                //             return console.error(err);
+                //         }
+                     
+                //         fs.unlink(`${file.destination}/${file.filename}`,function(err){
+                //              if(err) return console.log(err);
+                //              filesToDelete.push(file.eventVersionFileId);  
+                //              console.log(file.eventVersionFileId)
+                //         });  
+                //      });
+                //     // fs.exists(`${file.destination}/${file.filename}`, (exist) => {
+                //     //     if(exist)
+                //     //     {
+                //     //        fs.unlinkSync(`${file.destination}/${file.filename}`, (err) => {
+                //     //         if (err) throw err;
+                //     //         console.log(file.eventVersionFileId)
+                           
+                //     //       });              
+                //     //     }                      
+                //     //   });   
+                // }
+                console.log(filesToDelete)
+                //   await db.eventversionfiles.destroy({ where: { eventVersionFileId: filesToDelete }}, { transaction })
+                //   await db.eventversions.destroy({
+                //     where:{
+                //         eventVersionId: req.query.eventVersionId
+                //     }
+                // }, { transaction });
+                await transaction.commit()
+              }
+              finally {
+                ;
+              }   
         }
+        res.status(200).json({status:200,  message : "Ok"});
+    } catch (error) {
+        console.log(error)
+        await transaction.rollback();
+        res.status(500).json({status:500,  message : error});
     }
-    // console.log(eventversion)
     
-    res.status(200).json({status:200,  message : "Ok"});
 } 
 
 const eventVersionApproval = async (req,res) =>{
-
-    let eventversion = await db.eventversions.findOne({
-        where: { 
-            isActive: 0,
-            eventVersionId: req.query.eventVersionId
+       let eventVersion = await db.eventversions.update(
+        {
+            isActive: req.body.Approval
         },
-        include: [{
-            model: db.eventversionfiles,
-            as: 'files',
-            required:false, 
-            attributes: ['filename', 'destination'],
-        }],
+        {
+        where:
+        {
+          eventVersionId: req.body.eventVersionId
+        }
        });
-       console.log(eventversion)
+       let savedLog = await db.logs.create({ userId: req.userId, updated : 1, referenceId: req.body.eventVersionId, model: "eventVersion", comments:req.body.comments, approved: req.body.Approval  });   
        res.status(200).json({status:200,  message : "Ok"});
 }
-const getActiveEvents = async (req, res) => {
-    try {        
-        let events = await db.eventversions.findAll({
-        where: { 
-            isActive: 1,
-            startDate:{
-                [Op.lte]: moment().format('YYYY-MM-DD')
-            },
-            endDate:{
-                [Op.gte]: moment().format('YYYY-MM-DD')
-            },
-        },
-        include: [{
-            model: db.eventversionfiles,
-            as: 'files',
-            required:false, 
-            attributes: ['filename'],
-        }],
-       });
-       if (events !== undefined && events.length > 0) 
-       {
-            for await (const event of events) {
-                for await (const file of event.files) {
-                    file.filename = `${SITE_HOST}/events/${file.filename}`;
-                }
-            }
-       }
-       res.status(200).json(events);
-    } catch (error) {
-        console.log(error)
-        res.status(500).json([]);
-    }
-}
+
 
 
 
 
 
 module.exports = {
+    getActiveEvents,
+    getDraftEvents,
+    getEventVersionsForApproval,
     newEvent,
     updateEventVersion,
     eventVersionApproval,
     deleteEventVersion,
-    getActiveEvents,
     uploadEventImage,
     deleteEventImage
 }
-//StartDate 
-//EndDate
-//Nombre
